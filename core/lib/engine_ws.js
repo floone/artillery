@@ -35,6 +35,27 @@ WSEngine.prototype.createScenario = function(scenarioSpec, ee) {
   return self.compile(tasks, scenarioSpec.flow, ee);
 };
 
+function isSockJSMode() {
+  return process.env.WS_SOCKJS === 'true';
+}
+
+function isSockJSEmpty(data) {
+  return isSockJSMode() && data === 'o';
+}
+
+function transformSockJSResponse(data) {
+  if (isSockJSMode()) {
+    if (data.startsWith('a')) {
+      try {
+        return JSON.parse(data.substr(1))[0];
+      } catch (err) {
+        debug('WS SockJS could not parse data');
+      }
+    }
+  }
+  return data;
+}
+
 function getMessageHandler(context, params, ee, callback) {
   return function messageHandler(event) {
     const { data } = event;
@@ -45,9 +66,16 @@ function getMessageHandler(context, params, ee, callback) {
       return callback(new Error('Empty response from WS server'), context);
     }
 
+    if (isSockJSEmpty(data)) {
+      debug('WS skip empty object');
+      return;
+    }
+
+    const transformedData = transformSockJSResponse(data);
+
     let fauxResponse;
     try {
-      fauxResponse = { body: JSON.parse(data) };
+      fauxResponse = { body: JSON.parse(transformedData) };
     } catch (err) {
       fauxResponse = { body: event.data };
     }
